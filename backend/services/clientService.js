@@ -100,3 +100,37 @@ export const getTrainerAvailability = async () => {
     const slots = await clientModel.fetchAvailableTrainerSlots();
     return slots;
 };
+
+// 2.3.2 Implement appointment request
+export const requestAppointment = async (data) => {
+    if (!data.client_id || !data.availability_id) {
+        throw new ValidationError("Client ID and availability slot are required", 400);
+    }
+
+    const activeMembership = await clientModel.checkActiveMembership(data.client_id);
+    if (activeMembership.length === 0) {
+        throw new ValidationError("Active membership is required to book an appointment", 400);
+    }
+
+    const slotRows = await clientModel.findAvailabilityById(data.availability_id);
+    if (slotRows.length === 0 || slotRows[0].slot_status !== 'Available') {
+        throw new ValidationError("Selected time slot is no longer available", 400);
+    }
+
+    const duplicate = await clientModel.checkDuplicateAppointment(data.client_id, data.availability_id);
+    if (duplicate.length > 0) {
+        throw new ValidationError("You already requested this time slot", 409);
+    }
+
+    const slot = slotRows[0];
+    const appointmentId = await clientModel.insertAppointment({
+        client_id: data.client_id,
+        trainer_id: slot.trainer_id,
+        availability_id: slot.availability_id,
+        appointment_date: slot.available_date,
+        start_time: slot.start_time,
+        end_time: slot.end_time
+    });
+
+    return appointmentId;
+};

@@ -101,3 +101,22 @@ export const getTrainerAvailability = async (req, res) => {
         });
     }
 };
+
+// 2.3.2 Implement appointment request
+export const requestAppointment = async (req, res) => {
+    const { client_id, availability_id } = req.body;
+    const data = { client_id, availability_id };
+
+    try {
+        const appointmentId = await clientService.requestAppointment(data);
+        res.status(200).json({
+            success: true,
+            message: appointmentId
+        });
+    } catch (e) {
+        console.log(e);
+        res.status(e.statusCode || 500).json({
+            error: `${e.message || "Internal Server Error"}`
+        });
+    }
+};

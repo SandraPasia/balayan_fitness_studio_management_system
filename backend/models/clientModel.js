@@ -51,3 +51,36 @@ export const fetchAvailableTrainerSlots = async () => {
     );
     return rows;
 };
+
+// 2.3.2 Implement appointment request
+export const checkActiveMembership = async (clientId) => {
+    const [rows] = await pool.query(
+        "SELECT * FROM memberships WHERE client_id = ? AND status = 'Active' AND expiration_date >= CURDATE()",
+        [clientId]
+    );
+    return rows;
+};
+
+export const findAvailabilityById = async (availabilityId) => {
+    const [rows] = await pool.query(
+        "SELECT * FROM trainer_availability WHERE availability_id = ?",
+        [availabilityId]
+    );
+    return rows;
+};
+
+export const checkDuplicateAppointment = async (clientId, availabilityId) => {
+    const [rows] = await pool.query(
+        "SELECT * FROM appointments WHERE client_id = ? AND availability_id = ? AND status != 'Rejected'",
+        [clientId, availabilityId]
+    );
+    return rows;
+};
+
+export const insertAppointment = async (data) => {
+    const [result] = await pool.query(
+        "INSERT INTO appointments (client_id, trainer_id, availability_id, appointment_date, start_time, end_time, status) VALUES (?, ?, ?, ?, ?, ?, 'Pending')",
+        [data.client_id, data.trainer_id, data.availability_id, data.appointment_date, data.start_time, data.end_time]
+    );
+    return result.insertId;
+};
