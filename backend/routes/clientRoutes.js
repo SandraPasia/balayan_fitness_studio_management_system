@@ -22,4 +22,8 @@ clientRoutes.get('/availability', clientController.getTrainerAvailability);
 // 2.3.2 Implement appointment request
 clientRoutes.post('/appointments', clientController.requestAppointment);
 
+// 2.3.3 Display appointment status and schedule change request
+clientRoutes.get('/appointments/:clientId', clientController.getAppointments);
+clientRoutes.put('/appointments/change/:appointmentId', clientController.requestScheduleChange);
+
 export default clientRoutes;

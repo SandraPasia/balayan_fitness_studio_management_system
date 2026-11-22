@@ -84,3 +84,28 @@ export const insertAppointment = async (data) => {
     );
     return result.insertId;
 };
+
+// 2.3.3 Display appointment status and schedule change request
+export const findAppointmentsByClientId = async (clientId) => {
+    const [rows] = await pool.query(
+        "SELECT a.appointment_id, t.full_name AS trainer_name, a.appointment_date, a.start_time, a.end_time, a.status, a.rejection_reason, a.requested_new_availability_id, a.change_request_status FROM appointments a JOIN trainers t ON a.trainer_id = t.trainer_id WHERE a.client_id = ? ORDER BY a.appointment_date DESC, a.start_time DESC",
+        [clientId]
+    );
+    return rows;
+};
+
+export const findAppointmentById = async (appointmentId) => {
+    const [rows] = await pool.query(
+        "SELECT * FROM appointments WHERE appointment_id = ?",
+        [appointmentId]
+    );
+    return rows;
+};
+
+export const updateScheduleChangeRequest = async (appointmentId, newAvailabilityId) => {
+    const [result] = await pool.query(
+        "UPDATE appointments SET requested_new_availability_id = ?, change_request_status = 'Pending' WHERE appointment_id = ?",
+        [newAvailabilityId, appointmentId]
+    );
+    return result.affectedRows;
+};

@@ -120,3 +120,37 @@ export const requestAppointment = async (req, res) => {
         });
     }
 };
+
+// 2.3.3 Display appointment status and schedule change request
+export const getAppointments = async (req, res) => {
+    const { clientId } = req.params;
+
+    try {
+        const appointments = await clientService.getAppointments(parseInt(clientId));
+        res.status(200).json(appointments);
+    } catch (e) {
+        console.log(e);
+        res.status(e.statusCode || 500).json({
+            error: `${e.message || "Internal Server Error"}`
+        });
+    }
+};
+
+export const requestScheduleChange = async (req, res) => {
+    const { appointmentId } = req.params;
+    const { requested_new_availability_id } = req.body;
+    const data = { appointment_id: parseInt(appointmentId), requested_new_availability_id };
+
+    try {
+        const result = await clientService.requestScheduleChange(data);
+        res.status(200).json({
+            success: true,
+            message: result
+        });
+    } catch (e) {
+        console.log(e);
+        res.status(e.statusCode || 500).json({
+            error: `${e.message || "Internal Server Error"}`
+        });
+    }
+};

@@ -134,3 +134,28 @@ export const requestAppointment = async (data) => {
 
     return appointmentId;
 };
+
+// 2.3.3 Display appointment status and schedule change request
+export const getAppointments = async (clientId) => {
+    const appointments = await clientModel.findAppointmentsByClientId(clientId);
+    return appointments;
+};
+
+export const requestScheduleChange = async (data) => {
+    if (!data.appointment_id || !data.requested_new_availability_id) {
+        throw new ValidationError("Appointment ID and new schedule slot are required", 400);
+    }
+
+    const appointment = await clientModel.findAppointmentById(data.appointment_id);
+    if (appointment.length === 0) {
+        throw new ValidationError("Appointment not found", 404);
+    }
+
+    const newSlot = await clientModel.findAvailabilityById(data.requested_new_availability_id);
+    if (newSlot.length === 0 || newSlot[0].slot_status !== 'Available') {
+        throw new ValidationError("Requested new time slot is not available", 400);
+    }
+
+    const updated = await clientModel.updateScheduleChangeRequest(data.appointment_id, data.requested_new_availability_id);
+    return updated;
+};
