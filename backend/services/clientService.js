@@ -83,3 +83,14 @@ export const getMembership = async (clientId) => {
 
     return memberships;
 };
+
+// 2.2.2 Generate and display individual QR code
+export const getQrCode = async (clientId) => {
+    const client = await clientModel.findClientQrById(clientId);
+
+    if (client.length === 0) {
+        throw new ValidationError("Client not found", 404);
+    }
+
+    return client[0];
+};

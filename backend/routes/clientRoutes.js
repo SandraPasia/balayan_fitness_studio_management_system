@@ -13,4 +13,7 @@ clientRoutes.put('/change-password', clientController.changePassword);
 // 2.2.1 Display membership information
 clientRoutes.get('/membership/:clientId', clientController.getMembership);
 
+// 2.2.2 Generate and display individual QR code
+clientRoutes.get('/qr/:clientId', clientController.getQrCode);
+
 export default clientRoutes;

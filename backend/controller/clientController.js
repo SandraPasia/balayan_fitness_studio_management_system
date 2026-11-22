@@ -70,3 +70,21 @@ export const getMembership = async (req, res) => {
         });
     }
 };
+
+// 2.2.2 Generate and display individual QR code
+export const getQrCode = async (req, res) => {
+    const { clientId } = req.params;
+
+    try {
+        const result = await clientService.getQrCode(parseInt(clientId));
+        res.status(200).json({
+            success: true,
+            message: result
+        });
+    } catch (e) {
+        console.log(e);
+        res.status(e.statusCode || 500).json({
+            error: `${e.message || "Internal Server Error"}`
+        });
+    }
+};

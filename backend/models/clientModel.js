@@ -34,3 +34,12 @@ export const findMembershipByClientId = async (clientId) => {
     );
     return rows;
 };
+
+// 2.2.2 Generate and display individual QR code
+export const findClientQrById = async (clientId) => {
+    const [rows] = await pool.query(
+        "SELECT client_id, full_name, qr_code FROM clients WHERE client_id = ?",
+        [clientId]
+    );
+    return rows;
+};
