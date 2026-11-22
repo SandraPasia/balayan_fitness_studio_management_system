@@ -94,3 +94,9 @@ export const getQrCode = async (clientId) => {
 
     return client[0];
 };
+
+// 2.3.1 Display trainer availability
+export const getTrainerAvailability = async () => {
+    const slots = await clientModel.fetchAvailableTrainerSlots();
+    return slots;
+};

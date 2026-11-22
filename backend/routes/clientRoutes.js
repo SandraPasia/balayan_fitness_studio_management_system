@@ -16,4 +16,7 @@ clientRoutes.get('/membership/:clientId', clientController.getMembership);
 // 2.2.2 Generate and display individual QR code
 clientRoutes.get('/qr/:clientId', clientController.getQrCode);
 
+// 2.3.1 Display trainer availability
+clientRoutes.get('/availability', clientController.getTrainerAvailability);
+
 export default clientRoutes;

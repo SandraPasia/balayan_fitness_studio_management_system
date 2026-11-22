@@ -43,3 +43,11 @@ export const findClientQrById = async (clientId) => {
     );
     return rows;
 };
+
+// 2.3.1 Display trainer availability
+export const fetchAvailableTrainerSlots = async () => {
+    const [rows] = await pool.query(
+        "SELECT ta.availability_id, t.trainer_id, t.full_name AS trainer_name, t.specialization, ta.available_date, ta.start_time, ta.end_time FROM trainer_availability ta JOIN trainers t ON ta.trainer_id = t.trainer_id WHERE ta.slot_status = 'Available' ORDER BY ta.available_date ASC, ta.start_time ASC"
+    );
+    return rows;
+};

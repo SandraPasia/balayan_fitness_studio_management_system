@@ -88,3 +88,16 @@ export const getQrCode = async (req, res) => {
         });
     }
 };
+
+// 2.3.1 Display trainer availability
+export const getTrainerAvailability = async (req, res) => {
+    try {
+        const slots = await clientService.getTrainerAvailability();
+        res.status(200).json(slots);
+    } catch (e) {
+        console.log(e);
+        res.status(e.statusCode || 500).json({
+            error: `${e.message || "Internal Server Error"}`
+        });
+    }
+};
