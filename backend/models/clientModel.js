@@ -9,3 +9,19 @@ export const findClientByUsername = async (username) => {
     return rows;
 };
 
+// 2.1.2 Implement change password
+export const findUserById = async (userId) => {
+    const [rows] = await pool.query(
+        "SELECT * FROM users WHERE user_id = ? AND role = 'Client'",
+        [userId]
+    );
+    return rows;
+};
+
+export const updatePassword = async (userId, hashedPassword) => {
+    const [result] = await pool.query(
+        "UPDATE users SET password = ? WHERE user_id = ?",
+        [hashedPassword, userId]
+    );
+    return result.affectedRows;
+};

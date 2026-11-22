@@ -40,3 +40,36 @@ export const logout = async () => {
     return "Logout successful";
 };
 
+// 2.1.2 Implement change password
+export const changePassword = async (data) => {
+    if (!data.user_id || !data.currentPassword || !data.newPassword || !data.confirmPassword) {
+        throw new ValidationError("All fields are required", 400);
+    }
+
+    if (data.newPassword !== data.confirmPassword) {
+        throw new ValidationError("New password and confirm password do not match", 400);
+    }
+
+    if (!validator.isStrongPassword(data.newPassword)) {
+        throw new ValidationError("New password is not strong enough", 400);
+    }
+
+    const existing = await clientModel.findUserById(data.user_id);
+
+    if (existing.length === 0) {
+        throw new ValidationError("Client account not found", 404);
+    }
+
+    const isMatch = await bcrypt.compare(data.currentPassword, existing[0].password);
+
+    if (!isMatch) {
+        throw new ValidationError("Current password is incorrect", 400);
+    }
+
+    const salt = bcrypt.genSaltSync(10);
+    const hashedPassword = bcrypt.hashSync(data.newPassword, salt);
+
+    await clientModel.updatePassword(data.user_id, hashedPassword);
+    return "Password updated successfully";
+};
+

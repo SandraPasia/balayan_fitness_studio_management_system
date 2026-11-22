@@ -7,5 +7,8 @@ const clientRoutes = express.Router();
 clientRoutes.post('/login', clientController.login);
 clientRoutes.post('/logout', clientController.logout);
 
+// 2.1.2 Implement change password
+clientRoutes.put('/change-password', clientController.changePassword);
+
 
 export default clientRoutes;
