@@ -118,3 +118,20 @@ export const findFitnessProgressByClientId = async (clientId) => {
     );
     return rows;
 };
+
+// 2.5.1 Implement client notifications
+export const findNotificationsByUserId = async (userId) => {
+    const [rows] = await pool.query(
+        "SELECT notification_id, title, message, is_read, created_at FROM notifications WHERE user_id = ? ORDER BY created_at DESC",
+        [userId]
+    );
+    return rows;
+};
+
+export const markNotificationAsRead = async (notificationId) => {
+    const [result] = await pool.query(
+        "UPDATE notifications SET is_read = 1 WHERE notification_id = ?",
+        [notificationId]
+    );
+    return result.affectedRows;
+};

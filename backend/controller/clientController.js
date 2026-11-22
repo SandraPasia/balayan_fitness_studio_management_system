@@ -169,3 +169,35 @@ export const getFitnessProgress = async (req, res) => {
         });
     }
 };
+
+// 2.5.1 Implement client notifications
+export const getNotifications = async (req, res) => {
+    const { userId } = req.params;
+
+    try {
+        const notifications = await clientService.getNotifications(parseInt(userId));
+        res.status(200).json(notifications);
+    } catch (e) {
+        console.log(e);
+        res.status(e.statusCode || 500).json({
+            error: `${e.message || "Internal Server Error"}`
+        });
+    }
+};
+
+export const markAsRead = async (req, res) => {
+    const { notificationId } = req.params;
+
+    try {
+        const result = await clientService.markAsRead(parseInt(notificationId));
+        res.status(200).json({
+            success: true,
+            message: result
+        });
+    } catch (e) {
+        console.log(e);
+        res.status(e.statusCode || 500).json({
+            error: `${e.message || "Internal Server Error"}`
+        });
+    }
+};

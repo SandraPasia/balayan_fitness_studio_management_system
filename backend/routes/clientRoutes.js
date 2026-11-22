@@ -29,4 +29,8 @@ clientRoutes.put('/appointments/change/:appointmentId', clientController.request
 // 2.4.1 Display fitness progress records
 clientRoutes.get('/progress/:clientId', clientController.getFitnessProgress);
 
+// 2.5.1 Implement client notifications
+clientRoutes.get('/notifications/:userId', clientController.getNotifications);
+clientRoutes.put('/notifications/read/:notificationId', clientController.markAsRead);
+
 export default clientRoutes;
