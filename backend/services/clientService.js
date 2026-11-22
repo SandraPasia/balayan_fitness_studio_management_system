@@ -72,3 +72,14 @@ export const changePassword = async (data) => {
     await clientModel.updatePassword(data.user_id, hashedPassword);
     return "Password updated successfully";
 };
+
+// 2.2.1 Display membership information
+export const getMembership = async (clientId) => {
+    const memberships = await clientModel.findMembershipByClientId(clientId);
+
+    if (memberships.length === 0) {
+        throw new ValidationError("No membership records found", 404);
+    }
+
+    return memberships;
+};

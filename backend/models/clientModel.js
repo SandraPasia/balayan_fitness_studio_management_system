@@ -25,3 +25,12 @@ export const updatePassword = async (userId, hashedPassword) => {
     );
     return result.affectedRows;
 };
+
+// 2.2.1 Display membership information
+export const findMembershipByClientId = async (clientId) => {
+    const [rows] = await pool.query(
+        "SELECT membership_id, membership_type, start_date, expiration_date, status FROM memberships WHERE client_id = ? ORDER BY expiration_date DESC",
+        [clientId]
+    );
+    return rows;
+};
