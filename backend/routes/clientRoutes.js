@@ -10,5 +10,7 @@ clientRoutes.post('/logout', clientController.logout);
 // 2.1.2 Implement change password
 clientRoutes.put('/change-password', clientController.changePassword);
 
+// 2.2.1 Display membership information
+clientRoutes.get('/membership/:clientId', clientController.getMembership);
 
 export default clientRoutes;
