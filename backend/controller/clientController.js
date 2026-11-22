@@ -154,3 +154,18 @@ export const requestScheduleChange = async (req, res) => {
         });
     }
 };
+
+// 2.4.1 Display fitness progress records
+export const getFitnessProgress = async (req, res) => {
+    const { clientId } = req.params;
+
+    try {
+        const progress = await clientService.getFitnessProgress(parseInt(clientId));
+        res.status(200).json(progress);
+    } catch (e) {
+        console.log(e);
+        res.status(e.statusCode || 500).json({
+            error: `${e.message || "Internal Server Error"}`
+        });
+    }
+};

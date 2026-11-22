@@ -159,3 +159,9 @@ export const requestScheduleChange = async (data) => {
     const updated = await clientModel.updateScheduleChangeRequest(data.appointment_id, data.requested_new_availability_id);
     return updated;
 };
+
+// 2.4.1 Display fitness progress records
+export const getFitnessProgress = async (clientId) => {
+    const progress = await clientModel.findFitnessProgressByClientId(clientId);
+    return progress;
+};

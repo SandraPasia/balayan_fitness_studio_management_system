@@ -109,3 +109,12 @@ export const updateScheduleChangeRequest = async (appointmentId, newAvailability
     );
     return result.affectedRows;
 };
+
+// 2.4.1 Display fitness progress records
+export const findFitnessProgressByClientId = async (clientId) => {
+    const [rows] = await pool.query(
+        "SELECT fp.progress_id, fp.height_cm, fp.weight_kg, fp.bmi, fp.remarks, fp.recorded_date, t.full_name AS trainer_name FROM fitness_progress fp LEFT JOIN trainers t ON fp.trainer_id = t.trainer_id WHERE fp.client_id = ? ORDER BY fp.recorded_date DESC",
+        [clientId]
+    );
+    return rows;
+};
