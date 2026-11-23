@@ -1,6 +1,6 @@
 import pool from '../config/db.js';
 
-// 3.7.1 Trainer login
+// Trainer login
 export const findTrainerByUsername = async (username) => {
     const [rows] = await pool.query(
         "SELECT u.user_id, u.username, u.password, u.role, u.account_status, t.trainer_id, t.full_name, t.specialization FROM users u LEFT JOIN trainers t ON u.user_id = t.user_id WHERE u.username = ? AND u.role = 'Trainer'",
