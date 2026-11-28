@@ -8,7 +8,7 @@ const WelcomePage = ({ onEnterLogin }) => {
         <img
           src={headerImg}
           alt="Balayan Fitness Studio"
-          className="image"
+          className="welcome-logo"
         />
 
         <h1 className="welcome-title">

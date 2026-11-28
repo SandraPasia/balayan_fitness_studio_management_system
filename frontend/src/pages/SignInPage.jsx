@@ -26,6 +26,14 @@ const SignInPage = ({
     e.preventDefault();
     setStatus({ type: "", text: "" });
 
+    if (!username.trim() || !password.trim()) {
+      setStatus({
+        type: "error",
+        text: "Please sign in first. Please fill out your username and password.",
+      });
+      return;
+    }
+
     try {
       const response = await fetch("http://localhost:3000/trainer/login", {
         method: "POST",
@@ -69,7 +77,7 @@ const SignInPage = ({
         <p className={`status-message ${status.type}`}>{status.text}</p>
       )}
 
-      <form onSubmit={handleSignIn} autoComplete="off">
+      <form onSubmit={handleSignIn} autoComplete="off" noValidate>
         <div className="input-fields">
           <label htmlFor="SignInUsername">Username</label>
           <input
@@ -79,7 +87,6 @@ const SignInPage = ({
             placeholder="Enter your username"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
-            required
           />
         </div>
 
@@ -93,7 +100,6 @@ const SignInPage = ({
               placeholder="Enter your password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              required
             />
             <button
               type="button"

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 
-// 12-hour format (6:00 AM - 10:00 PM)
+// 12-hour format (para sa Trainer Availability)
 const formatTime = (timeStr) => {
   if (!timeStr) return "";
   const [hourStr, minuteStr] = timeStr.split(":");
@@ -37,12 +37,17 @@ const getBmiRemarksFromValue = (bmiVal) => {
 };
 
 const DashboardPage = ({ trainer, onLogout }) => {
+  // Active Sidebar Tab: 'overview' | 'appointments' | 'availability' | 'progress'
+  const [activeTab, setActiveTab] = useState("overview");
+  // Collapsible Right Sidebar state
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
   const [searchQuery, setSearchQuery] = useState("");
   const [showNotif, setShowNotif] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [appointments, setAppointments] = useState([]);
 
-  // States para sa Appointment Review & Rejection 
+  // States para sa Appointment Review & Rejection
   const [selectedApp, setSelectedApp] = useState(null);
   const [rejectionReason, setRejectionReason] = useState("");
 
@@ -55,7 +60,7 @@ const DashboardPage = ({ trainer, onLogout }) => {
   const [availEnd, setAvailEnd] = useState("09:00");
   const [availError, setAvailError] = useState("");
 
-  // States para sa Fitness Progress 
+  // States para sa Fitness Progress
   const [myClients, setMyClients] = useState([]);
   const [progressRecords, setProgressRecords] = useState([]);
   const [progClientId, setProgClientId] = useState("");
@@ -63,7 +68,6 @@ const DashboardPage = ({ trainer, onLogout }) => {
   const [progWeight, setProgWeight] = useState("");
   const [progError, setProgError] = useState("");
 
-  // Kunin ang petsa ngayon (YYYY-MM-DD) para i-disable ang past dates sa calendar picker
   const now = new Date();
   const todayDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 
@@ -120,23 +124,71 @@ const DashboardPage = ({ trainer, onLogout }) => {
       });
   }, [userId]);
 
+  // Lahat ng unique clients na may 'Accepted' appointment
+  const dropdownClients = (() => {
+    const map = new Map();
+    myClients.forEach((c) => {
+      if (c.client_id) map.set(Number(c.client_id), c.full_name);
+    });
+    appointments.forEach((app) => {
+      if (app.appointment_status === "Accepted" && app.client_id) {
+        map.set(Number(app.client_id), app.full_name);
+      }
+    });
+    return Array.from(map.entries()).map(([client_id, full_name]) => ({
+      client_id,
+      full_name,
+    }));
+  })();
+
+  useEffect(() => {
+    if (dropdownClients.length > 0) {
+      const exists = dropdownClients.some(
+        (c) => Number(c.client_id) === Number(progClientId)
+      );
+      if (!exists) {
+        setProgClientId(dropdownClients[0].client_id);
+      }
+    } else {
+      setProgClientId("");
+    }
+  }, [dropdownClients, progClientId]);
+
   const unreadCount = notifications.filter((n) => !n.read).length;
 
-  // Summary Counts para sa itaas ng dashboard
-  const validAppointments = appointments.filter(
-    (app) => app.start_time >= "06:00:00" && app.end_time <= "22:00:00"
-  );
-  const pendingCount = validAppointments.filter(
+  // Summary Counts (Date-based appointments, walang time filter)
+  const pendingCount = appointments.filter(
     (app) => app.appointment_status === "Pending"
   ).length;
-  const acceptedCount = validAppointments.filter(
+  const acceptedCount = appointments.filter(
     (app) => app.appointment_status === "Accepted"
   ).length;
   const availableSlotsCount = availability.filter(
     (slot) => slot.slot_status === "Available"
   ).length;
-  const activeClientsCount = myClients.length;
+  const activeClientsCount = dropdownClients.length;
   const totalProgressCount = progressRecords.length;
+
+  // Unique client counts per Membership Type (Weekly, Monthly, Yearly)
+  const uniqueClientMemberships = new Map();
+  appointments.forEach((app) => {
+    if (app.client_id && app.membership_type && !uniqueClientMemberships.has(app.client_id)) {
+      uniqueClientMemberships.set(
+        app.client_id,
+        String(app.membership_type).trim().toLowerCase()
+      );
+    }
+  });
+
+  const weeklyCount = Array.from(uniqueClientMemberships.values()).filter(
+    (type) => type.includes("week")
+  ).length;
+  const monthlyCount = Array.from(uniqueClientMemberships.values()).filter(
+    (type) => type.includes("month")
+  ).length;
+  const yearlyCount = Array.from(uniqueClientMemberships.values()).filter(
+    (type) => type.includes("year") || type.includes("annual")
+  ).length;
 
   const filteredNotifications = notifications.filter((n) => {
     const keyword = searchQuery.toLowerCase();
@@ -146,12 +198,13 @@ const DashboardPage = ({ trainer, onLogout }) => {
     );
   });
 
-  const filteredAppointments = validAppointments.filter((app) => {
+  const filteredAppointments = appointments.filter((app) => {
     const keyword = searchQuery.toLowerCase();
     return (
       app.full_name.toLowerCase().includes(keyword) ||
-      app.appointment_date.toLowerCase().includes(keyword) ||
-      app.appointment_status.toLowerCase().includes(keyword)
+      (app.appointment_date || "").toLowerCase().includes(keyword) ||
+      app.appointment_status.toLowerCase().includes(keyword) ||
+      (app.membership_type || "").toLowerCase().includes(keyword)
     );
   });
 
@@ -174,6 +227,11 @@ const DashboardPage = ({ trainer, onLogout }) => {
   });
 
   const liveBmi = calculateBmiInfo(progHeight, progWeight);
+
+  const handleSelectTab = (tab) => {
+    setActiveTab(tab);
+    setIsSidebarOpen(false);
+  };
 
   const markAllAsRead = async () => {
     await fetch(`http://localhost:3000/trainer/notifications/${userId}/read`, {
@@ -316,440 +374,649 @@ const DashboardPage = ({ trainer, onLogout }) => {
     }
   };
 
-  return (
-    <div className="dash-wrapper">
-      <header className="dash-header">
-        <h2>Welcome, {trainerName}</h2>
+  // Reusable Appointment Requests Table (Date muna bago Membership Type)
+  const renderAppointmentsTable = (rows, isExpanded = false) => (
+    <div className={`table-scroll ${isExpanded ? "table-scroll-expanded" : ""}`}>
+      <table className="simple-table">
+        <thead>
+          <tr>
+            <th>Client Name</th>
+            <th>Date</th>
+            <th>Membership Type</th>
+            <th>Membership Period</th>
+            <th>Status</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.length === 0 ? (
+            <tr>
+              <td colSpan="6" className="table-empty">
+                No appointment requests found.
+              </td>
+            </tr>
+          ) : (
+            rows.map((app) => {
+              const startDate = app.membership_start
+                ? app.membership_start.split("T")[0]
+                : null;
+              const endDate = app.membership_end
+                ? app.membership_end.split("T")[0]
+                : null;
+
+              return (
+                <tr key={app.appointment_id}>
+                  <td>{app.full_name}</td>
+                  <td>{app.appointment_date ? app.appointment_date.split("T")[0] : ""}</td>
+                  <td>
+                    <strong>{app.membership_type || "No Membership"}</strong>
+                  </td>
+                  <td>
+                    {startDate && endDate ? `${startDate} to ${endDate}` : "N/A"}
+                  </td>
+                  <td>
+                    <strong className={`status-${app.appointment_status.toLowerCase()}`}>
+                      {app.appointment_status}
+                    </strong>
+                    {app.rejection_reason && (
+                      <p className="rejection-text">
+                        Reason: {app.rejection_reason}
+                      </p>
+                    )}
+                  </td>
+                  <td>
+                    <button
+                      className="btn-review"
+                      onClick={() => openReviewModal(app)}
+                    >
+                      Review
+                    </button>
+                  </td>
+                </tr>
+              );
+            })
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+
+  // Reusable Trainer Availability Section (Form + Table)
+  const renderAvailabilitySection = (rows, isExpanded = false) => (
+    <>
+      <form className="avail-form" onSubmit={handleAddAvailability}>
+        <select
+          value={selectedTrainerId}
+          onChange={(e) => setSelectedTrainerId(Number(e.target.value))}
+          required
+        >
+          {trainersList.map((t) => {
+            const count = Number(t.active_clients || 0);
+            const isFull = count >= 35;
+            return (
+              <option key={t.trainer_id} value={t.trainer_id} disabled={isFull}>
+                {t.full_name} ({count}/35 Clients{isFull ? " - FULL" : ""})
+              </option>
+            );
+          })}
+        </select>
 
         <input
-          type="text"
-          className="dash-search"
-          placeholder="Search notifications, clients, trainers, schedules, progress..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
+          type="date"
+          min={todayDate}
+          value={availDate}
+          onChange={(e) => setAvailDate(e.target.value)}
+          required
         />
-        
-        <div className="dash-actions">
-          <div className="notif-box">
-            <button onClick={() => setShowNotif(!showNotif)}> Notifications ({unreadCount})</button>
-            {showNotif && (
-              <div className="notif-menu">
-                {filteredNotifications.length === 0 ? (
-                  <p>No notifications found</p>
-                ) : (
-                  filteredNotifications.map((n) => (
-                    <p key={n.id} className={n.read ? "notif-read" : "notif-unread"}>
-                      <strong>[{n.type}]</strong> {n.text}
-                    </p>
-                  ))
-                )}
+        <input
+          type="time"
+          min="06:00"
+          max="22:00"
+          value={availStart}
+          onChange={(e) => setAvailStart(e.target.value)}
+          required
+        />
+        <span>to</span>
+        <input
+          type="time"
+          min="06:00"
+          max="22:00"
+          value={availEnd}
+          onChange={(e) => setAvailEnd(e.target.value)}
+          required
+        />
+        <button type="submit" className="btn-review">Add Slot</button>
+      </form>
 
-                {unreadCount > 0 && (
-                  <button onClick={markAllAsRead}>Mark all as read</button>
-                )}
-              </div>
+      {availError && <p className="form-error-msg">{availError}</p>}
+
+      <div className={`table-scroll table-spaced ${isExpanded ? "table-scroll-expanded" : ""}`}>
+        <table className="simple-table">
+          <thead>
+            <tr>
+              <th>Trainer Name</th>
+              <th>Available Date</th>
+              <th>Time Slot</th>
+              <th>Status</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 ? (
+              <tr>
+                <td colSpan="5" className="table-empty">
+                  No availability schedules added yet.
+                </td>
+              </tr>
+            ) : (
+              rows.map((slot) => (
+                <tr key={slot.availability_id}>
+                  <td>{slot.full_name}</td>
+                  <td>{slot.available_date.split("T")[0]}</td>
+                  <td>
+                    {formatTime(slot.start_time)} - {formatTime(slot.end_time)}
+                  </td>
+                  <td>
+                    <strong
+                      className={
+                        slot.slot_status === "Available"
+                          ? "status-available"
+                          : "status-booked"
+                      }
+                    >
+                      {slot.slot_status}
+                    </strong>
+                  </td>
+                  <td>
+                    {slot.slot_status === "Available" ? (
+                      <button
+                        className="btn-reject"
+                        onClick={() => handleDeleteAvailability(slot.availability_id)}
+                      >
+                        Delete
+                      </button>
+                    ) : (
+                      <span>Booked</span>
+                    )}
+                  </td>
+                </tr>
+              ))
             )}
-          </div>
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
 
-          <button onClick={onLogout}>Sign Out</button>
-        </div>
-      </header>
+  // Reusable Client Fitness Progress & BMI Calculator Section
+  const renderProgressSection = (rows, isExpanded = false) => (
+    <>
+      <form className="progress-form" onSubmit={handleAddProgress}>
+        <select
+          value={progClientId}
+          onChange={(e) => setProgClientId(Number(e.target.value))}
+          required
+        >
+          {dropdownClients.length === 0 ? (
+            <option value="">No accepted clients yet</option>
+          ) : (
+            dropdownClients.map((c) => (
+              <option key={c.client_id} value={c.client_id}>
+                {c.full_name}
+              </option>
+            ))
+          )}
+        </select>
 
-      <main className="dash-content">
-        {/* TOP SUMMARY CARDS */}
-        <div className="summary-grid">
-          <div className="summary-card">
-            <span className="summary-label">Active Clients</span>
-            <strong className="summary-value">{activeClientsCount} / 35</strong>
-          </div>
+        <input
+          type="number"
+          step="1"
+          min="50"
+          max="300"
+          placeholder="Height (cm)"
+          value={progHeight}
+          onKeyDown={(e) => [".", ",", "e", "E", "+", "-"].includes(e.key) && e.preventDefault()}
+          onChange={(e) => setProgHeight(e.target.value.replace(/\D/g, ""))}
+          required
+        />
 
-          <div className="summary-card">
-            <span className="summary-label">Pending Requests</span>
-            <strong className="summary-value">{pendingCount}</strong>
-          </div>
+        <input
+          type="number"
+          step="1"
+          min="20"
+          max="500"
+          placeholder="Weight (kg)"
+          value={progWeight}
+          onKeyDown={(e) => [".", ",", "e", "E", "+", "-"].includes(e.key) && e.preventDefault()}
+          onChange={(e) => setProgWeight(e.target.value.replace(/\D/g, ""))}
+          required
+        />
 
-          <div className="summary-card">
-            <span className="summary-label">Accepted Sessions</span>
-            <strong className="summary-value">{acceptedCount}</strong>
-          </div>
+        <button
+          type="submit"
+          className="btn-review"
+          disabled={dropdownClients.length === 0}
+        >
+          Add Record Progress
+        </button>
+      </form>
 
-          <div className="summary-card">
-            <span className="summary-label">Available Slots</span>
-            <strong className="summary-value">{availableSlotsCount}</strong>
-          </div>
+      <div className="bmi-preview-bar">
+        <span>
+          <strong>BMI Calculator:</strong>{" "}
+          {liveBmi ? (
+            <>
+              <strong>{liveBmi.value}</strong>{" "}
+              <span className={`bmi-badge bmi-${liveBmi.remarks.toLowerCase()}`}>
+                {liveBmi.remarks}
+              </span>
+            </>
+          ) : (
+            "Enter height (cm) and weight (kg) to calculate BMI"
+          )}
+        </span>
+      </div>
 
-          <div className="summary-card">
-            <span className="summary-label">Progress Records</span>
-            <strong className="summary-value">{totalProgressCount}</strong>
-          </div>
-        </div>
+      {progError && <p className="form-error-msg">{progError}</p>}
 
-        {/* Appointment Requests */}
-        <div className="dash-box">
-          <h3>Appointment Requests</h3>
+      <div className={`table-scroll table-spaced ${isExpanded ? "table-scroll-expanded" : ""}`}>
+        <table className="simple-table">
+          <thead>
+            <tr>
+              <th>Client Name</th>
+              <th>Date Recorded</th>
+              <th>Height (cm)</th>
+              <th>Weight (kg)</th>
+              <th>BMI</th>
+              <th>Remarks</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 ? (
+              <tr>
+                <td colSpan="7" className="table-empty">
+                  No fitness progress records yet.
+                </td>
+              </tr>
+            ) : (
+              rows.map((rec) => {
+                const hasStoredBmi = Number(rec.bmi) > 0;
+                const fallback = calculateBmiInfo(rec.height_cm, rec.weight_kg);
+                const bmiValue = hasStoredBmi
+                  ? Number(rec.bmi).toFixed(1)
+                  : fallback?.value || "-";
+                const bmiRemarks =
+                  rec.remarks ||
+                  (hasStoredBmi
+                    ? getBmiRemarksFromValue(rec.bmi)
+                    : fallback?.remarks || "");
 
-          <div className="table-scroll">
-            <table className="simple-table">
-              <thead>
-                <tr>
-                  <th>Client Name</th>
-                  <th>Date</th>
-                  <th>Time</th>
-                  <th>Status</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredAppointments.length === 0 ? (
-                  <tr>
-                    <td colSpan="5" className="table-empty">
-                      No appointment requests found.
-                    </td>
-                  </tr>
-                ) : (
-                  filteredAppointments.map((app) => (
-                    <tr key={app.appointment_id}>
-                      <td>{app.full_name}</td>
-                      <td>{app.appointment_date.split("T")[0]}</td>
-                      <td>
-                        {formatTime(app.start_time)} - {formatTime(app.end_time)}
-                      </td>
-                      <td>
-                        <strong className={`status-${app.appointment_status.toLowerCase()}`}>
-                          {app.appointment_status}
-                        </strong>
-                        {app.rejection_reason && (
-                          <p className="rejection-text">
-                            Reason: {app.rejection_reason}
-                          </p>
-                        )}
-                      </td>
-                      <td>
-                        <button className="btn-review" onClick={() => openReviewModal(app)}>Review</button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* Trainer Availability */}
-        <div className="dash-box dash-box-spaced">
-          <h3>Trainer Availability</h3>
-
-          <form className="avail-form" onSubmit={handleAddAvailability}>
-            <select
-              value={selectedTrainerId}
-              onChange={(e) => setSelectedTrainerId(Number(e.target.value))}
-              required
-            >
-              {trainersList.map((t) => {
-                const count = Number(t.active_clients || 0);
-                const isFull = count >= 35;
                 return (
-                  <option key={t.trainer_id} value={t.trainer_id} disabled={isFull}>
-                    {t.full_name} ({count}/35 Clients{isFull ? " - FULL" : ""})
-                  </option>
-                );
-              })}
-            </select>
-
-            <input
-              type="date"
-              min={todayDate}
-              value={availDate}
-              onChange={(e) => setAvailDate(e.target.value)}
-              required
-            />
-            <input
-              type="time"
-              min="06:00"
-              max="22:00"
-              value={availStart}
-              onChange={(e) => setAvailStart(e.target.value)}
-              required
-            />
-            <span>to</span>
-            <input
-              type="time"
-              min="06:00"
-              max="22:00"
-              value={availEnd}
-              onChange={(e) => setAvailEnd(e.target.value)}
-              required
-            />
-            <button type="submit" className="btn-review">Add Slot</button>
-          </form>
-
-          {availError && <p className="form-error-msg">{availError}</p>}
-
-          <div className="table-scroll table-spaced">
-            <table className="simple-table">
-              <thead>
-                <tr>
-                  <th>Trainer Name</th>
-                  <th>Available Date</th>
-                  <th>Time Slot</th>
-                  <th>Status</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredAvailability.length === 0 ? (
-                  <tr>
-                    <td colSpan="5" className="table-empty">
-                      No availability schedules added yet.
+                  <tr key={rec.progress_id}>
+                    <td>{rec.client_name}</td>
+                    <td>{rec.recorded_date ? rec.recorded_date.split("T")[0] : ""}</td>
+                    <td>{Math.round(Number(rec.height_cm))} cm</td>
+                    <td>{Math.round(Number(rec.weight_kg))} kg</td>
+                    <td>
+                      <strong>{bmiValue}</strong>
+                    </td>
+                    <td>
+                      {bmiRemarks ? (
+                        <span
+                          className={`bmi-badge bmi-${bmiRemarks.toLowerCase()}`}
+                        >
+                          {bmiRemarks}
+                        </span>
+                      ) : (
+                        "-"
+                      )}
+                    </td>
+                    <td>
+                      <button
+                        className="btn-reject"
+                        onClick={() => handleDeleteProgress(rec.progress_id)}
+                      >
+                        Delete
+                      </button>
                     </td>
                   </tr>
-                ) : (
-                  filteredAvailability.map((slot) => (
-                    <tr key={slot.availability_id}>
-                      <td>{slot.full_name}</td>
-                      <td>{slot.available_date.split("T")[0]}</td>
-                      <td>
-                        {formatTime(slot.start_time)} - {formatTime(slot.end_time)}
-                      </td>
-                      <td>
-                        <strong
-                          className={
-                            slot.slot_status === "Available"
-                              ? "status-available"
-                              : "status-booked"
-                          }
-                        >
-                          {slot.slot_status}
-                        </strong>
-                      </td>
-                      <td>
-                        {slot.slot_status === "Available" ? (
-                          <button
-                            className="btn-reject"
-                            onClick={() => handleDeleteAvailability(slot.availability_id)}>Delete</button>
-                        ) : (
-                          <span>Booked</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+
+  return (
+    <div className="dash-layout">
+      {/* OVERLAY KAPAG BUKAS ANG SIDEBAR */}
+      {isSidebarOpen && (
+        <div
+          className="sidebar-backdrop"
+          onClick={() => setIsSidebarOpen(false)}
+        />
+      )}
+
+      {/* COLLAPSIBLE RIGHT SIDEBAR */}
+      <aside className={`dash-sidebar ${isSidebarOpen ? "open" : ""}`}>
+        <div className="sidebar-brand-row">
+          <div className="sidebar-brand">
+            <h3>Balayan Fitness</h3>
+            <span>Trainer Portal</span>
           </div>
+          <button
+            type="button"
+            className="sidebar-close-btn"
+            onClick={() => setIsSidebarOpen(false)}
+            aria-label="Close sidebar"
+          >
+            ✕
+          </button>
         </div>
 
-        {/* Client Fitness Progress */}
-        <div className="dash-box dash-box-spaced">
-          <h3>Client Fitness Progress</h3>
+        <nav className="sidebar-nav">
+          <button
+            type="button"
+            className={`sidebar-link ${activeTab === "overview" ? "active" : ""}`}
+            onClick={() => handleSelectTab("overview")}
+          >
+            Dashboard Overview
+          </button>
 
-          <form className="progress-form" onSubmit={handleAddProgress}>
-            <select
-              value={progClientId}
-              onChange={(e) => setProgClientId(Number(e.target.value))}
-              required
-            >
-              {myClients.length === 0 ? (
-                <option value="">No assigned clients yet</option>
-              ) : (
-                myClients.map((c) => (
-                  <option key={c.client_id} value={c.client_id}>
-                    {c.full_name}
-                  </option>
-                ))
+          <button
+            type="button"
+            className={`sidebar-link ${activeTab === "appointments" ? "active" : ""}`}
+            onClick={() => handleSelectTab("appointments")}
+          >
+            <span>Appointment Requests</span>
+            {pendingCount > 0 && (
+              <span className="sidebar-badge">{pendingCount}</span>
+            )}
+          </button>
+
+          <button
+            type="button"
+            className={`sidebar-link ${activeTab === "availability" ? "active" : ""}`}
+            onClick={() => handleSelectTab("availability")}
+          >
+            Trainer Availability
+          </button>
+
+          <button
+            type="button"
+            className={`sidebar-link ${activeTab === "progress" ? "active" : ""}`}
+            onClick={() => handleSelectTab("progress")}
+          >
+            Fitness Progress
+          </button>
+        </nav>
+
+        <div className="sidebar-footer">
+          <button type="button" className="sidebar-logout" onClick={onLogout}>
+            Log Out
+          </button>
+        </div>
+      </aside>
+
+      {/* MAIN AREA */}
+      <div className="dash-main-area">
+        <header className="dash-header">
+          <div className="dash-header-left">
+            <h2>Welcome, {trainerName}</h2>
+          </div>
+
+          <input
+            type="text"
+            className="dash-search"
+            placeholder="Search notifications, clients, membership, schedules..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+
+          <div className="dash-actions">
+            <div className="notif-box">
+              <button onClick={() => setShowNotif(!showNotif)}>
+                Notifications ({unreadCount})
+              </button>
+              {showNotif && (
+                <div className="notif-menu">
+                  {filteredNotifications.length === 0 ? (
+                    <p>No notifications found</p>
+                  ) : (
+                    filteredNotifications.map((n) => (
+                      <p key={n.id} className={n.read ? "notif-read" : "notif-unread"}>
+                        <strong>[{n.type}]</strong> {n.text}
+                      </p>
+                    ))
+                  )}
+
+                  {unreadCount > 0 && (
+                    <button onClick={markAllAsRead}>Mark all as read</button>
+                  )}
+                </div>
               )}
-            </select>
-
-            <input
-              type="number"
-              step="1"
-              min="50"
-              max="300"
-              placeholder="Height (cm)"
-              value={progHeight}
-              onKeyDown={(e) => [".", ",", "e", "E", "+", "-"].includes(e.key) && e.preventDefault()}
-              onChange={(e) => setProgHeight(e.target.value.replace(/\D/g, ""))}
-              required
-            />
-
-            <input
-              type="number"
-              step="1"
-              min="20"
-              max="500"
-              placeholder="Weight (kg)"
-              value={progWeight}
-              onKeyDown={(e) => [".", ",", "e", "E", "+", "-"].includes(e.key) && e.preventDefault()}
-              onChange={(e) => setProgWeight(e.target.value.replace(/\D/g, ""))}
-              required
-            />
+            </div>
 
             <button
-              type="submit"
-              className="btn-review"
-              disabled={myClients.length === 0}
-            > Add Record Progress</button>
-          </form>
-
-          {/* BMI Calculator Preview with Remarks */}
-          <div className="bmi-preview-bar">
-            <span>
-              <strong>BMI Calculator:</strong>{" "}
-              {liveBmi ? (
-                <>
-                  <strong>{liveBmi.value}</strong>{" "}
-                  <span className={`bmi-badge bmi-${liveBmi.remarks.toLowerCase()}`}>
-                    {liveBmi.remarks}
-                  </span>
-                </>
-              ) : (
-                "Enter height (cm) and weight (kg) to calculate BMI"
-              )}
-            </span>
+              type="button"
+              className="menu-toggle-btn"
+              onClick={() => setIsSidebarOpen((prev) => !prev)}
+              aria-label="Toggle navigation menu"
+            >
+              ☰
+            </button>
           </div>
+        </header>
 
-          {progError && <p className="form-error-msg">{progError}</p>}
+        <main className="dash-content">
+          {/* TAB 1: COMPLETE DASHBOARD OVERVIEW */}
+          {activeTab === "overview" && (
+            <>
+              <div className="dash-page-header">
+                <h2>Dashboard</h2>
+                <p>Overview of your clients, appointments, schedules, and memberships</p>
+              </div>
 
-          <div className="table-scroll table-spaced">
-            <table className="simple-table">
-              <thead>
-                <tr>
-                  <th>Client Name</th>
-                  <th>Date Recorded</th>
-                  <th>Height (cm)</th>
-                  <th>Weight (kg)</th>
-                  <th>BMI</th>
-                  <th>Remarks</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredProgress.length === 0 ? (
-                  <tr>
-                    <td colSpan="7" className="table-empty">
-                      No fitness progress records yet.
-                    </td>
-                  </tr>
-                ) : (
-                  filteredProgress.map((rec) => {
-                    const hasStoredBmi = Number(rec.bmi) > 0;
-                    const fallback = calculateBmiInfo(rec.height_cm, rec.weight_kg);
-                    const bmiValue = hasStoredBmi
-                      ? Number(rec.bmi).toFixed(1)
-                      : fallback?.value || "-";
-                    const bmiRemarks =
-                      rec.remarks ||
-                      (hasStoredBmi
-                        ? getBmiRemarksFromValue(rec.bmi)
-                        : fallback?.remarks || "");
+              <div className="summary-grid">
+                <div className="summary-card">
+                  <span className="summary-label">Active Clients</span>
+                  <strong className="summary-value">{activeClientsCount} / 35</strong>
+                </div>
 
-                    return (
-                      <tr key={rec.progress_id}>
-                        <td>{rec.client_name}</td>
-                        <td>{rec.recorded_date ? rec.recorded_date.split("T")[0] : ""}</td>
-                        <td>{Math.round(Number(rec.height_cm))} cm</td>
-                        <td>{Math.round(Number(rec.weight_kg))} kg</td>
-                        <td>
-                          <strong>{bmiValue}</strong>
-                        </td>
-                        <td>
-                          {bmiRemarks ? (
-                            <span
-                              className={`bmi-badge bmi-${bmiRemarks.toLowerCase()}`}
-                            >
-                              {bmiRemarks}
-                            </span>
-                          ) : (
-                            "-"
-                          )}
-                        </td>
-                        <td>
-                          <button
-                            className="btn-reject"
-                            onClick={() => handleDeleteProgress(rec.progress_id)}>Delete</button>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </main>
+                <div className="summary-card">
+                  <span className="summary-label">Pending Requests</span>
+                  <strong className="summary-value">{pendingCount}</strong>
+                </div>
+
+                <div className="summary-card">
+                  <span className="summary-label">Accepted Sessions</span>
+                  <strong className="summary-value">{acceptedCount}</strong>
+                </div>
+
+                <div className="summary-card">
+                  <span className="summary-label">Available Slots</span>
+                  <strong className="summary-value">{availableSlotsCount}</strong>
+                </div>
+
+                <div className="summary-card">
+                  <span className="summary-label">Progress Records</span>
+                  <strong className="summary-value">{totalProgressCount}</strong>
+                </div>
+
+                <div className="summary-card">
+                  <span className="summary-label">Weekly Members</span>
+                  <strong className="summary-value">{weeklyCount}</strong>
+                </div>
+
+                <div className="summary-card">
+                  <span className="summary-label">Monthly Members</span>
+                  <strong className="summary-value">{monthlyCount}</strong>
+                </div>
+
+                <div className="summary-card">
+                  <span className="summary-label">Yearly Members</span>
+                  <strong className="summary-value">{yearlyCount}</strong>
+                </div>
+              </div>
+
+              {/* 1. Appointment Requests Overview */}
+              <div className="dash-box">
+                <div className="dash-box-header-row">
+                  <h3>Appointment Requests</h3>
+                  <button
+                    type="button"
+                    className="btn-view-all"
+                    onClick={() => handleSelectTab("appointments")}
+                  >
+                    View All ({filteredAppointments.length})
+                  </button>
+                </div>
+
+                {renderAppointmentsTable(filteredAppointments, false)}
+              </div>
+
+              {/* 2. Trainer Availability Overview */}
+              <div className="dash-box dash-box-spaced">
+                <div className="dash-box-header-row">
+                  <h3>Trainer Availability</h3>
+                  <button
+                    type="button"
+                    className="btn-view-all"
+                    onClick={() => handleSelectTab("availability")}
+                  >
+                    View All ({filteredAvailability.length})
+                  </button>
+                </div>
+
+                {renderAvailabilitySection(filteredAvailability, false)}
+              </div>
+
+              {/* 3. Client Fitness Progress & BMI Calculator Overview */}
+              <div className="dash-box dash-box-spaced">
+                <div className="dash-box-header-row">
+                  <h3>Client Fitness Progress</h3>
+                  <button
+                    type="button"
+                    className="btn-view-all"
+                    onClick={() => handleSelectTab("progress")}
+                  >
+                    View All ({filteredProgress.length})
+                  </button>
+                </div>
+
+                {renderProgressSection(filteredProgress, false)}
+              </div>
+            </>
+          )}
+
+          {/* TAB 2: FULL APPOINTMENT REQUESTS VIEW */}
+          {activeTab === "appointments" && (
+            <>
+              <div className="dash-page-header">
+                <h2>Appointment Requests</h2>
+                <p>Manage and review all client appointment requests and memberships</p>
+              </div>
+
+              <div className="dash-box dash-box-expanded">
+                {renderAppointmentsTable(filteredAppointments, true)}
+              </div>
+            </>
+          )}
+
+          {/* TAB 3: FULL TRAINER AVAILABILITY VIEW */}
+          {activeTab === "availability" && (
+            <>
+              <div className="dash-page-header">
+                <h2>Trainer Availability</h2>
+                <p>Add or manage available training schedules (6:00 AM - 10:00 PM)</p>
+              </div>
+
+              <div className="dash-box dash-box-expanded">
+                {renderAvailabilitySection(filteredAvailability, true)}
+              </div>
+            </>
+          )}
+
+          {/* TAB 4: FULL CLIENT FITNESS PROGRESS VIEW */}
+          {activeTab === "progress" && (
+            <>
+              <div className="dash-page-header">
+                <h2>Client Fitness Progress</h2>
+                <p>Record client height, weight, and automatically calculated BMI</p>
+              </div>
+
+              <div className="dash-box dash-box-expanded">
+                {renderProgressSection(filteredProgress, true)}
+              </div>
+            </>
+          )}
+        </main>
+      </div>
 
       {/* Appointment Review & Rejection Modal */}
       {selectedApp && (
         <div className="modal-overlay" onClick={closeReviewModal}>
           <div className="modal-box" onClick={(e) => e.stopPropagation()}>
-            <h3>Appointment Review</h3>
+            <h3>Appointment Request Details</h3>
+            <p>
+              <strong>Client Name:</strong> {selectedApp.full_name}
+            </p>
+            <p>
+              <strong>Email:</strong> {selectedApp.email}
+            </p>
+            <p>
+              <strong>Contact:</strong> {selectedApp.contact_number}
+            </p>
+            <p>
+              <strong>Appointment Date:</strong>{" "}
+              {selectedApp.appointment_date ? selectedApp.appointment_date.split("T")[0] : ""}
+            </p>
+            <p>
+              <strong>Membership Type:</strong>{" "}
+              {selectedApp.membership_type || "No Membership"}
+            </p>
+            <p>
+              <strong>Membership Period:</strong>{" "}
+              {selectedApp.membership_start && selectedApp.membership_end
+                ? `${selectedApp.membership_start.split("T")[0]} to ${selectedApp.membership_end.split("T")[0]}`
+                : "N/A"}
+            </p>
+            <p>
+              <strong>Current Status:</strong> {selectedApp.appointment_status}
+            </p>
 
-            <div className="review-details">
-              <p>
-                <strong>Client Name:</strong> {selectedApp.full_name}
-              </p>
-              <p>
-                <strong>Email:</strong> {selectedApp.email || "N/A"}
-              </p>
-              <p>
-                <strong>Contact Number:</strong>{" "}
-                {selectedApp.contact_number || "N/A"}
-              </p>
-              <p>
-                <strong>Date:</strong>{" "}
-                {selectedApp.appointment_date.split("T")[0]}
-              </p>
-              <p>
-                <strong>Time:</strong> {formatTime(selectedApp.start_time)} -{" "}
-                {formatTime(selectedApp.end_time)}
-              </p>
-              <p>
-                <strong>Current Status:</strong>{" "}
-                <strong className={`status-${selectedApp.appointment_status.toLowerCase()}`}>
-                  {selectedApp.appointment_status}
-                </strong>
-              </p>
-              {selectedApp.rejection_reason && (
-                <p className="rejection-modal-text">
-                  <strong>Rejection Reason:</strong>{" "}
-                  {selectedApp.rejection_reason}
-                </p>
-              )}
+            <label>Rejection Reason (Required if rejecting):</label>
+            <textarea
+              rows="3"
+              placeholder="Enter reason for rejection..."
+              value={rejectionReason}
+              onChange={(e) => setRejectionReason(e.target.value)}
+            />
+
+            <div className="modal-actions">
+              <button
+                className="btn-accept"
+                onClick={() =>
+                  handleAppointmentAction(selectedApp.appointment_id, "Accepted")
+                }
+              >
+                Accept
+              </button>
+              <button
+                className="btn-reject"
+                onClick={() =>
+                  handleAppointmentAction(selectedApp.appointment_id, "Rejected")
+                }
+              >
+                Reject
+              </button>
+              <button className="btn-close" onClick={closeReviewModal}>
+                Close
+              </button>
             </div>
-
-            {selectedApp.appointment_status === "Pending" ? (
-              <div className="reject-section">
-                <label htmlFor="rejectReason">
-                  <strong>Reason for Rejection:</strong>
-                </label>
-                <textarea
-                  id="rejectReason"
-                  rows="3"
-                  placeholder="Type your reason here..."
-                  value={rejectionReason}
-                  onChange={(e) => setRejectionReason(e.target.value)}
-                />
-
-                <div className="modal-buttons">
-                  <button
-                    className="btn-accept"
-                    onClick={() =>
-                      handleAppointmentAction(
-                        selectedApp.appointment_id,
-                        "Accepted")}>Accept</button><button
-                    className="btn-reject"
-                    onClick={() =>
-                      handleAppointmentAction(
-                        selectedApp.appointment_id,
-                        "Rejected")}>Reject</button>
-                  <button className="btn-close" onClick={closeReviewModal}>Close</button>
-                </div>
-              </div>
-            ) : (
-              <div className="modal-buttons">
-                <button className="btn-close" onClick={closeReviewModal}>Close</button>
-              </div>
-            )}
           </div>
         </div>
       )}
