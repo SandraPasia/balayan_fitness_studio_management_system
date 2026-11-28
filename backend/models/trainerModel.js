@@ -36,19 +36,27 @@ export const markNotificationsAsRead = async (userId) => {
     return result;
 };
 
-// Get appointment requests (6:00 AM - 10:00 PM only, newest at top)
+// Get appointment requests (date-based only, newest at top)
 export const getAppointmentsByUserId = async (userId) => {
+    const isMainTrainerAccount = Number(userId) === 2;
     const [rows] = await pool.query(
-        `SELECT a.appointment_id, a.client_id, a.availability_id, a.appointment_date, a.start_time, a.end_time, 
-                a.appointment_status, a.rejection_reason, c.full_name, c.email, c.contact_number
+        `SELECT a.appointment_id, a.client_id, a.availability_id, a.appointment_date,
+                a.appointment_status, a.rejection_reason, c.full_name, c.email, c.contact_number,
+                m.membership_type, m.start_date AS membership_start, m.expiration_date AS membership_end,
+                m.status AS membership_status
          FROM appointments a
          JOIN trainers t ON a.trainer_id = t.trainer_id
          JOIN clients c ON a.client_id = c.client_id
-         WHERE t.user_id = ?
-           AND a.start_time >= '06:00:00'
-           AND a.end_time <= '22:00:00'
+         LEFT JOIN memberships m ON m.membership_id = (
+             SELECT m2.membership_id
+             FROM memberships m2
+             WHERE m2.client_id = c.client_id
+             ORDER BY m2.expiration_date DESC, m2.membership_id DESC
+             LIMIT 1
+         )
+         WHERE ${isMainTrainerAccount ? '1=1' : 't.user_id = ?'}
          ORDER BY a.appointment_id DESC`,
-        [userId]
+        isMainTrainerAccount ? [] : [userId]
     );
     return rows;
 };
@@ -70,7 +78,7 @@ export const updateAppointmentStatus = async (appointmentId, status, rejectionRe
     );
 
     const [rows] = await pool.query(
-        `SELECT c.user_id, a.appointment_date, a.start_time 
+        `SELECT c.user_id, a.appointment_date
          FROM appointments a 
          JOIN clients c ON a.client_id = c.client_id 
          WHERE a.appointment_id = ?`,
@@ -81,8 +89,8 @@ export const updateAppointmentStatus = async (appointmentId, status, rejectionRe
         const clientUserId = rows[0].user_id;
         const dateStr = new Date(rows[0].appointment_date).toISOString().split('T')[0];
         const msg = status === 'Accepted'
-            ? `Your appointment on ${dateStr} (${rows[0].start_time}) has been Accepted.`
-            : `Your appointment on ${dateStr} (${rows[0].start_time}) was Rejected. Reason: ${rejectionReason}`;
+            ? `Your appointment on ${dateStr} has been Accepted.`
+            : `Your appointment on ${dateStr} was Rejected. Reason: ${rejectionReason}`;
 
         await pool.query(
             'INSERT INTO notifications (user_id, notification_type, message, is_read) VALUES (?, ?, ?, 0)',
@@ -170,40 +178,58 @@ export const deleteAvailabilitySlot = async (availabilityId) => {
     return result.affectedRows;
 };
 
+// Kunin ang clients na may Pending o Accepted appointments
 export const getTrainerClients = async (userId) => {
+    const isMainTrainerAccount = Number(userId) === 2;
     const [rows] = await pool.query(
         `SELECT DISTINCT c.client_id, c.full_name
          FROM clients c
          JOIN appointments a ON c.client_id = a.client_id
          JOIN trainers t ON a.trainer_id = t.trainer_id
-         WHERE t.user_id = ? AND a.appointment_status IN ('Pending', 'Accepted')
+         WHERE ${isMainTrainerAccount ? '1=1' : 't.user_id = ?'} AND a.appointment_status IN ('Pending', 'Accepted')
          ORDER BY c.full_name ASC`,
-        [userId]
+        isMainTrainerAccount ? [] : [userId]
     );
     return rows;
 };
 
-// Kunin ang lahat ng fitness progress records na ni-record ng trainer na ito
+// Kunin ang lahat ng fitness progress records
 export const getFitnessProgressByTrainerUserId = async (userId) => {
+    const isMainTrainerAccount = Number(userId) === 2;
     const [rows] = await pool.query(
         `SELECT fp.progress_id, fp.client_id, c.full_name AS client_name,
                 fp.height_cm, fp.weight_kg, fp.bmi, fp.remarks, fp.recorded_date
          FROM fitness_progress fp
          JOIN trainers t ON fp.trainer_id = t.trainer_id
          JOIN clients c ON fp.client_id = c.client_id
-         WHERE t.user_id = ?
+         WHERE ${isMainTrainerAccount ? '1=1' : 't.user_id = ?'}
          ORDER BY fp.recorded_date DESC, fp.progress_id DESC`,
-        [userId]
+        isMainTrainerAccount ? [] : [userId]
     );
     return rows;
 };
 
-// (Whole Numbers: Height & Weight, 1 Decimal BMI + Remarks)
+// Create fitness progress (Whole Numbers: Height & Weight, 1 Decimal BMI + Remarks)
 export const createFitnessProgress = async (userId, { client_id, height_cm, weight_kg, bmi, remarks }) => {
-    const [trainers] = await pool.query(
+    let [trainers] = await pool.query(
         'SELECT trainer_id, full_name FROM trainers WHERE user_id = ?',
         [userId]
     );
+
+    if (trainers.length === 0 && Number(userId) === 2) {
+        [trainers] = await pool.query(
+            `SELECT t.trainer_id, t.full_name 
+             FROM appointments a 
+             JOIN trainers t ON a.trainer_id = t.trainer_id 
+             WHERE a.client_id = ? 
+             ORDER BY a.appointment_id DESC LIMIT 1`,
+            [client_id]
+        );
+        if (trainers.length === 0) {
+            [trainers] = await pool.query('SELECT trainer_id, full_name FROM trainers ORDER BY trainer_id ASC LIMIT 1');
+        }
+    }
+
     if (trainers.length === 0) return null;
 
     const { trainer_id } = trainers[0];
@@ -255,7 +281,7 @@ export const deleteFitnessProgress = async (progressId) => {
     return result.affectedRows;
 };
 
-// view only para sa Client Side
+// View only para sa Client Side
 export const getFitnessProgressByClientUserId = async (clientUserId) => {
     const [rows] = await pool.query(
         `SELECT fp.progress_id, t.full_name AS trainer_name,
@@ -268,4 +294,4 @@ export const getFitnessProgressByClientUserId = async (clientUserId) => {
         [clientUserId]
     );
     return rows;
-}; 
+};
